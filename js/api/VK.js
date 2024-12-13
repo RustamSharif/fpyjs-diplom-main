@@ -1,3 +1,4 @@
+
 /**
  * Класс VK
  * Управляет изображениями из VK с помощью VK API.
@@ -9,17 +10,34 @@ class VK {
   /**
    * Получает изображения
    * */
-  static get(id = '', callback) {
-    // Сохраняем callback для дальнейшей обработки
-    this.lastCallback = callback;
 
-    // Создаем элемент script для JSONP запроса
+  /**
+   * Метод для отрисовки изображений
+   * @param {Array} images - массив объектов с данными изображений
+   */
+  static drawImages(images) {
+    if (!images || !images.length) {
+      console.warn('No images to display');
+      return;
+    }
+    
+    // Обработка и отображение изображений
+    const processedImages = images.map(image => ({
+      ...image,
+      displayUrl: image.url,
+      displayDate: new Date(image.date).toLocaleDateString(),
+      displayLikes: `${image.likes} likes`
+    }));
+    
+    // Передача обработанных данных в callback
+    this.lastCallback(processedImages);
+  }
+
+
+  static get(id = '', callback) {
+    this.lastCallback = callback;
     const script = document.createElement('script');
-    
-    // Формируем URL запроса к VK API
     script.src = `https://api.vk.com/method/photos.get?owner_id=${id}&album_id=profile&access_token=${this.ACCESS_TOKEN}&v=5.131&callback=VK.processData`;
-    
-    // Добавляем скрипт в документ для выполнения запроса
     document.body.appendChild(script);
   }
 
@@ -27,33 +45,36 @@ class VK {
    * Обработчик ответа от сервера VK
    */
   static processData(result) {
-    // Находим и удаляем использованный script тег
     const script = document.querySelector('script[src*="photos.get"]');
     if (script) {
       script.remove();
     }
 
-    // Проверяем на наличие ошибки
     if (result.error) {
       alert(`Error ${result.error.error_code}: ${result.error.error_msg}`);
       return;
     }
 
-    // Получаем массив фотографий
-    const photos = result.response.items;
-    
-    // Находим самые большие версии фотографий
-    const largestPhotos = photos.map(photo => {
-      const sizes = photo.sizes;
-      return sizes.reduce((largest, current) => {
-        return (current.width > largest.width) ? current : largest;
-      });
-    });
-
-    // Вызываем сохраненный callback с полученными фотографиями
-    this.lastCallback(largestPhotos.map(photo => photo.url));
-    
-    // Сбрасываем callback
+    if (result && result.response && result.response.items) {
+      const images = result.response.items.map(item => {
+        if (!item.sizes || !item.sizes.length) return null;
+        const largestSize = item.sizes.reduce((a, b) => (a.width > b.width) ? a : b);
+        return {
+          url: largestSize.url,
+          likes: item.likes ? item.likes.count : 0,
+          date: new Date(item.date * 1000).toLocaleDateString()
+        };
+      }).filter(img => img !== null);
+      
+      if (this.drawImages) {
+        this.drawImages(images);
+      } else {
+        console.warn("drawImages method not found. Using default callback");
+        this.lastCallback(images);
+      }
+    } else {
+      console.error("Unexpected response format:", result);
+    }
     this.lastCallback = () => {};
   }
 }
